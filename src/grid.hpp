@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "math/math.hpp"
+#include "math/random.hpp"
 
 #include "helper.hpp"
 #include "ray.hpp"
@@ -170,6 +171,43 @@ inline hit_t trace(ray_t         ray,  //
   }
 
   return hit;
+}
+
+inline void generate(grid_t &grid, uint32_t seed = 1337) {
+  math::random_t rng{};
+  rng.generator.seed(seed);
+
+  const float e = float(grid.extent);
+  for (int blob = 0; blob < 40; blob++) {
+    const math::vec3 center = rng.random_vec<3>(0.15f * e, 0.85f * e);
+    const float      radius = rng.random_float(0.02f * e, 0.06f * e);
+
+    const float       max_radius = radius * 1.35f;
+    const math::ivec3 lo{math::ivec3{math::floor(center - max_radius)}};
+    const math::ivec3 hi{math::ivec3{math::ceil(center + max_radius)}};
+
+    for (int32_t z = lo.z; z <= hi.z; z++) {
+      for (int32_t y = lo.y; y <= hi.y; y++) {
+        for (int32_t x = lo.x; x <= hi.x; x++) {
+          const math::ivec3 cell{x, y, z};
+          if (!grid.contains(cell)) continue;
+          const math::vec3 delta = math::vec3{cell} - center;
+          const float      d     = math::length(delta);
+          const float      lump  = 1.f + 0.35f * math::sin(d * 0.35f);
+          if (d > radius * lump) continue;
+
+          const auto to_u8 = [](float v) {
+            return uint32_t(math::clamp(v, 0.f, 1.f) * 255.f);
+          };
+          const math::vec3 off_white{0.94f, 0.93f, 0.9f};
+          const float      variation = rng.random_float(0.92f, 1.f);
+          grid.set(cell, 0xff000000u | (to_u8(off_white.x * variation) << 0) |
+                             (to_u8(off_white.y * variation) << 8) |
+                             (to_u8(off_white.z * variation) << 16));
+        }
+      }
+    }
+  }
 }
 
 #endif

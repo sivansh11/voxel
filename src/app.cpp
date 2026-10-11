@@ -10,6 +10,8 @@
 
 #include "ui.hpp"
 #include "camera.hpp"
+#include "grid.hpp"
+#include "camera.hpp"
 
 app_t::app_t(int argc, char **argv) {
   win  = core::make_ref<core::window_t>("peace", 1200, 800);
@@ -90,6 +92,7 @@ void app_t::run() {
   core::frame_timer_t frame_timer{60.f};
 
   editor_camera_t camera{*win};
+  generate(grid);
 
   while (!win->should_close()) {
     core::clear_frame_function_times();
