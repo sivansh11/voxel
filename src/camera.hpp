@@ -9,9 +9,9 @@
 #include "math/math.hpp"
 
 class editor_camera_t : public core::camera_t {
-public:
+ public:
   editor_camera_t(core::window_t &window) : _window(window) {
-    inv_view[3] = math::vec4{-1, 0, 0, 0};
+    inv_view[3]          = math::vec4{-1, 0, 0, 0};
     auto [width, height] = _window.dimensions();
     update_projection(float(width) / float(height));
   }
@@ -36,14 +36,10 @@ public:
 
     glm::vec3 position = core::camera_t::position();
 
-    if (glfwGetKey(_window.window(), GLFW_KEY_W))
-      position += _front * velocity;
-    if (glfwGetKey(_window.window(), GLFW_KEY_S))
-      position -= _front * velocity;
-    if (glfwGetKey(_window.window(), GLFW_KEY_D))
-      position += _right * velocity;
-    if (glfwGetKey(_window.window(), GLFW_KEY_A))
-      position -= _right * velocity;
+    if (glfwGetKey(_window.window(), GLFW_KEY_W)) position += _front * velocity;
+    if (glfwGetKey(_window.window(), GLFW_KEY_S)) position -= _front * velocity;
+    if (glfwGetKey(_window.window(), GLFW_KEY_D)) position += _right * velocity;
+    if (glfwGetKey(_window.window(), GLFW_KEY_A)) position -= _right * velocity;
     if (glfwGetKey(_window.window(), GLFW_KEY_SPACE))
       position += _up * velocity;
     if (glfwGetKey(_window.window(), GLFW_KEY_LEFT_SHIFT))
@@ -51,7 +47,7 @@ public:
 
     glm::vec2 mouse{curX, curY};
     glm::vec2 difference = mouse - _initial_mouse;
-    _initial_mouse = mouse;
+    _initial_mouse       = mouse;
 
     if (glfwGetMouseButton(_window.window(), GLFW_MOUSE_BUTTON_1)) {
       difference.x = difference.x / float(width);
@@ -60,19 +56,17 @@ public:
       _yaw += difference.x * _mouse_sensitivity;
       _pitch += difference.y * _mouse_sensitivity;
 
-      if (_pitch > 89.0f)
-        _pitch = 89.0f;
-      if (_pitch < -89.0f)
-        _pitch = -89.0f;
+      if (_pitch > 89.0f) _pitch = 89.0f;
+      if (_pitch < -89.0f) _pitch = -89.0f;
     }
 
     glm::vec3 front;
     front.x = glm::cos(glm::radians(_yaw)) * glm::cos(glm::radians(_pitch));
     front.y = glm::sin(glm::radians(_pitch));
     front.z = glm::sin(glm::radians(_yaw)) * glm::cos(glm::radians(_pitch));
-    _front = front;
-    _right = glm::normalize(glm::cross(_front, glm::vec3{0, 1, 0}));
-    _up = glm::normalize(glm::cross(_right, _front));
+    _front  = front;
+    _right  = glm::normalize(glm::cross(_front, glm::vec3{0, 1, 0}));
+    _up     = glm::normalize(glm::cross(_right, _front));
 
     view = glm::lookAt(position, position + _front, glm::vec3{0, 1, 0});
 
@@ -84,7 +78,7 @@ public:
   float far{10000.0f};
   float near{0.1f};
 
-private:
+ private:
   core::window_t &_window;
 
   glm::vec3 _front{0.0f};
