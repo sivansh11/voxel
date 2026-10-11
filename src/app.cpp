@@ -1,4 +1,5 @@
 #include "app.hpp"
+#include <atomic>
 
 #define VK_NO_PROTOTYPES
 #include <vulkan/vulkan_core.h>
@@ -37,13 +38,22 @@ app_t::~app_t() {
 void app_t::draw() {
   auto *pixels         = reinterpret_cast<uint32_t *>(base->map_buffer(buffer));
   auto [width, height] = image_dims();
-  for (uint32_t y = 0; y < height; y++) {
-    uint32_t g = uint32_t(float(y) / height * 255.f);
-    for (uint32_t x = 0; x < width; x++) {
-      uint32_t r            = uint32_t(float(x) / width * 255.f);
-      pixels[y * width + x] = 0xff000000u | (r << 0) | (g << 8);
-    }
+
+  jobs.clear();
+  jobs.reserve(height);
+
+  for (uint32_t y = 0; y < height; ++y) {
+    const uint32_t g = uint32_t(float(y) / height * 255.f);
+    jobs.emplace_back(thread_pool.enqueue([pixels, width, height, y, g] {
+      const uint32_t row = y * width;
+      for (uint32_t x = 0; x < width; ++x) {
+        const uint32_t r = uint32_t(float(x) / width * 255.f);
+        pixels[row + x]  = 0xff000000u | (r << 0) | (g << 8);
+      }
+    }));
   }
+
+  for (auto &f : jobs) f.get();
 }
 
 void app_t::run() {
