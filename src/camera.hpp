@@ -11,7 +11,10 @@
 class editor_camera_t : public core::camera_t {
  public:
   editor_camera_t(core::window_t &window) : _window(window) {
-    inv_view[3]          = math::vec4{-1, 0, 0, 0};
+    inv_view[3] = math::vec4{128.f, 150.f, 340.f, 1.f};
+    double mouse_x, mouse_y;
+    glfwGetCursorPos(_window.window(), &mouse_x, &mouse_y);
+    _initial_mouse       = {float(mouse_x), float(mouse_y)};
     auto [width, height] = _window.dimensions();
     update_projection(float(width) / float(height));
   }
@@ -87,8 +90,8 @@ class editor_camera_t : public core::camera_t {
 
   glm::vec2 _initial_mouse{};
 
-  float _yaw{0.0f};
-  float _pitch{0.0f};
+  float _yaw{-90.0f};
+  float _pitch{-15.0f};
   float _mouse_speed{0.005f};
   float _mouse_sensitivity{10.0f};
 };
