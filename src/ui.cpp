@@ -50,9 +50,10 @@ void draw_viewport(context_t &ctx) {
   ImGui::Begin("viewport", nullptr, viewPortFlags);
 
   auto vp = ImGui::GetWindowSize();
-  if (ctx.viewport_width != vp.x || ctx.viewport_height != vp.y) {
-    ctx.viewport_width  = vp.x;
-    ctx.viewport_height = vp.y;
+  if (ctx.viewport_width != vp.x * ctx.scale ||
+      ctx.viewport_height != vp.y * ctx.scale) {
+    ctx.viewport_width  = vp.x * ctx.scale;
+    ctx.viewport_height = vp.y * ctx.scale;
   }
   ImGui::Image(
       reinterpret_cast<ImTextureID>(reinterpret_cast<void *>(ctx.vk_ds)),
@@ -64,6 +65,8 @@ void draw_viewport(context_t &ctx) {
 void draw_debug(context_t &ctx) {
   ImGui::Begin("debug");
   ImGui::Text("%f framerate", ImGui::GetIO().Framerate);
+  ImGui::Text("current dims: %u, %u", ctx.viewport_width, ctx.viewport_height);
+  ImGui::SliderFloat("scale", &ctx.scale, 0.01f, 1.f);
   ImGui::End();
 }
 

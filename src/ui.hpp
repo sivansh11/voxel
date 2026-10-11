@@ -10,6 +10,7 @@ struct context_t {
   VkDescriptorSet vk_ds;
   uint32_t        viewport_width;
   uint32_t        viewport_height;
+  float           scale = 0.125f;
 };
 
 void draw_dockspace(context_t &ctx);
