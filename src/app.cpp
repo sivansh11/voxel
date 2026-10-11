@@ -1,6 +1,7 @@
 #include "app.hpp"
 
 #include <atomic>
+#include "horizon/core/logger.hpp"
 
 #define VK_NO_PROTOTYPES
 #include <vulkan/vulkan_core.h>
@@ -11,6 +12,7 @@
 #include "ui.hpp"
 #include "camera.hpp"
 #include "grid.hpp"
+#include "64arytree.hpp"
 #include "camera.hpp"
 
 app_t::app_t(int argc, char **argv) {
@@ -56,7 +58,7 @@ inline uint32_t to_pixel(const math::vec3 &color) {
          (to_u8(color.z) << 16);
 }
 
-void app_t::draw(const core::camera_t &camera) {
+void app_t::draw(const core::camera_t &camera, bool trace_tree64) {
   auto *pixels         = reinterpret_cast<uint32_t *>(base->map_buffer(buffer));
   auto [width, height] = image_dims();
   float inv_width      = 1.f / width;
@@ -72,7 +74,12 @@ void app_t::draw(const core::camera_t &camera) {
         const math::vec2 uv = {float(x) * inv_width, float(y) * inv_height};
         const ray_t      ray =
             ray_t::create(uv, camera.inv_projection, camera.inv_view);
-        const hit_t hit = trace(ray, grid);
+        hit_t hit;
+        if (trace_tree64) {
+          hit = trace(ray, tree64);
+        } else {
+          hit = trace(ray, grid);
+        }
         if (hit.did_hit) {
           pixels[row + x] = hit.value;
         } else {
@@ -92,7 +99,18 @@ void app_t::run() {
   core::frame_timer_t frame_timer{60.f};
 
   editor_camera_t camera{*win};
-  generate(grid);
+  {
+    core::timer::scope_timer_t timer{[](auto duration) {
+      horizon_info("generated grid in {}ms", duration.count());
+    }};
+    generate(grid);
+  }
+  {
+    core::timer::scope_timer_t timer{[](auto duration) {
+      horizon_info("generated tree64 in {}ms", duration.count());
+    }};
+    generate(tree64);
+  }
 
   while (!win->should_close()) {
     core::clear_frame_function_times();
@@ -106,7 +124,7 @@ void app_t::run() {
 
     base->begin();
 
-    draw(camera);
+    draw(camera, ui_ctx.trace_tree64);
 
     auto [width, height] = image_dims();
 
