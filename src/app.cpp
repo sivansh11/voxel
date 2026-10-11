@@ -1,0 +1,178 @@
+#include "app.hpp"
+
+#define VK_NO_PROTOTYPES
+#include <vulkan/vulkan_core.h>
+
+#include "horizon/core/core.hpp"
+#include "horizon/gfx/helper.hpp"
+
+#include "ui.hpp"
+
+app_t::app_t(int argc, char **argv) {
+  win  = core::make_ref<core::window_t>("peace", 1200, 800);
+  ctx  = core::make_ref<gfx::context_t>(true);
+  base = core::make_ref<gfx::base_t>(win, ctx);
+
+  gfx::helper::imgui_init(
+      *base, gfx::helper::image_format(*base, base->current_swapchain_image()));
+
+  sampler = base->create_sampler({});
+
+  gfx::config_descriptor_set_layout_t imgui_cdsl{};
+  imgui_cdsl.add_layout_binding(0,                                          //
+                                VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,  //
+                                VK_SHADER_STAGE_FRAGMENT_BIT);
+  imgui_cdsl.use_bindless = false;
+  imgui_dsl               = base->create_descriptor_set_layout(imgui_cdsl);
+  imgui_ds                = base->allocate_descriptor_set(
+      {.handle_descriptor_set_layout = imgui_dsl});
+
+  create_image(1, 1);
+}
+
+app_t::~app_t() {
+  base->wait_idle();
+  gfx::helper::imgui_shutdown();
+}
+
+void app_t::draw() {
+  auto *pixels         = reinterpret_cast<uint32_t *>(base->map_buffer(buffer));
+  auto [width, height] = image_dims();
+  for (uint32_t y = 0; y < height; y++) {
+    uint32_t g = uint32_t(float(y) / height * 255.f);
+    for (uint32_t x = 0; x < width; x++) {
+      uint32_t r            = uint32_t(float(x) / width * 255.f);
+      pixels[y * width + x] = 0xff000000u | (r << 0) | (g << 8);
+    }
+  }
+}
+
+void app_t::run() {
+  ui::context_t ui_ctx{ctx->get_descriptor_set(imgui_ds).vk_descriptor_set,
+                       1,   //
+                       1};  //
+  core::frame_timer_t frame_timer{60.f};
+
+  while (!win->should_close()) {
+    core::clear_frame_function_times();
+    win->poll_events();
+    if (win->get_key_pressed(core::key_t::e_q) ||
+        win->get_key_pressed(core::key_t::e_escape))
+      break;
+
+    core::timer::duration_t dt = frame_timer.update();
+
+    base->begin();
+
+    draw();
+
+    auto [width, height] = image_dims();
+
+    gfx::rendergraph_t rg{};
+    rg.add_pass([&](gfx::handle_commandbuffer_t) {})
+        .add_write_buffer(base->buffer(buffer), VK_ACCESS_HOST_WRITE_BIT,
+                          VK_PIPELINE_STAGE_HOST_BIT);
+    rg.add_pass([&](gfx::handle_commandbuffer_t cmd) {
+        VkBufferImageCopy copy{};
+        copy.bufferOffset                    = 0;
+        copy.bufferRowLength                 = 0;
+        copy.bufferImageHeight               = 0;
+        copy.imageSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        copy.imageSubresource.mipLevel       = 0;
+        copy.imageSubresource.baseArrayLayer = 0;
+        copy.imageSubresource.layerCount     = 1;
+        copy.imageOffset                     = {0, 0, 0};
+        copy.imageExtent                     = {width, height, 1};
+        base->cmd_copy_buffer_to_image(cmd, base->buffer(buffer), image,
+                                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                       copy);
+      })
+        .add_read_buffer(base->buffer(buffer), VK_ACCESS_TRANSFER_READ_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT)
+        .add_write_image(image, VK_ACCESS_TRANSFER_WRITE_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    rg.add_pass([&](gfx::handle_commandbuffer_t cmd) {
+        base->begin_swapchain_renderpass();
+        gfx::helper::imgui_newframe();
+
+        ui::draw_dockspace(ui_ctx);
+        ui::draw_viewport(ui_ctx);
+
+        gfx::helper::imgui_endframe(*base, cmd);
+        base->end_swapchain_renderpass();
+      })
+        .add_read_image(image, VK_ACCESS_SHADER_READ_BIT,
+                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+        .add_write_image(base->current_swapchain_image(),
+                         VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    // empty pass to present
+    rg.add_pass([&](gfx::handle_commandbuffer_t) {})
+        .add_write_image(base->current_swapchain_image(), 0,
+                         VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                         VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+
+    auto cmd = base->current_commandbuffer();
+    base->render_rendergraph(rg, cmd);
+    base->end();
+
+    if (ui_ctx.viewport_width != width || ui_ctx.viewport_height != height) {
+      base->wait_idle();
+      destroy_image();
+      create_image(std::max(1u, ui_ctx.viewport_width),
+                   std::max(1u, ui_ctx.viewport_height));
+    }
+  }
+}
+
+void app_t::create_image(uint32_t width, uint32_t height) {
+  gfx::config_image_t ci{};
+  ci.vk_width   = width;
+  ci.vk_height  = height;
+  ci.vk_depth   = 1;
+  ci.vk_mips    = 1;
+  ci.vk_type    = VK_IMAGE_TYPE_2D;
+  ci.vk_format  = VK_FORMAT_R8G8B8A8_UNORM;
+  ci.vk_usage   = VK_IMAGE_USAGE_SAMPLED_BIT |  //
+                  VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+  ci.vk_tiling  = VK_IMAGE_TILING_OPTIMAL;
+  ci.debug_name = "image";
+  image         = base->create_image(ci);
+  image_view    = base->create_image_view(
+      {.handle_image = image, .debug_name = "image_view"});
+
+  create_buffer(width, height);
+
+  base->update_descriptor_set(imgui_ds)
+      .push_image_write(
+          0, {.handle_sampler    = sampler,
+              .handle_image_view = image_view,
+              .vk_image_layout   = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL})
+      .commit();
+}
+
+void app_t::create_buffer(uint32_t width, uint32_t height) {
+  gfx::config_buffer_t cb{};
+  cb.vk_size                     = VkDeviceSize(width) * height * 4;
+  cb.vk_buffer_usage_flags       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+  cb.vma_allocation_create_flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
+  cb.debug_name                  = "pixels";
+  buffer =
+      base->create_buffer(gfx::resource_update_policy_t::e_every_frame, cb);
+}
+
+void app_t::destroy_buffer() { base->destroy_buffer(buffer); }
+
+std::pair<uint32_t, uint32_t> app_t::image_dims() {
+  const auto &cfg = ctx->get_image(image).config;
+  return {cfg.vk_width, cfg.vk_height};
+}
+
+void app_t::destroy_image() {
+  base->destroy_image_view(image_view);
+  base->destroy_image(image);
+  destroy_buffer();
+}
