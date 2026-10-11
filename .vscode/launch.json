@@ -1,0 +1,15 @@
+{
+    "$schema": "https://raw.githubusercontent.com/mfussenegger/dapconfig-schema/master/dapconfig-schema.json",
+    "version": "0.2.0",
+    "configurations": [
+    {
+       "name": "peace",
+       "type": "cppdbg",
+       "request": "launch",
+       "program": "${workspaceFolder}/build/peace",
+       "args": [""],
+       "environment": [],
+       "cwd": "${workspaceFolder}"
+    }
+    ]
+}
