@@ -61,4 +61,10 @@ void draw_viewport(context_t &ctx) {
   ImGui::PopStyleVar(2);
 }
 
+void draw_debug(context_t &ctx) {
+  ImGui::Begin("debug");
+  ImGui::Text("%f framerate", ImGui::GetIO().Framerate);
+  ImGui::End();
+}
+
 }  // namespace ui

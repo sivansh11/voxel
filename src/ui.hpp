@@ -14,6 +14,7 @@ struct context_t {
 
 void draw_dockspace(context_t &ctx);
 void draw_viewport(context_t &ctx);
+void draw_debug(context_t &ctx);
 
 }  // namespace ui
 

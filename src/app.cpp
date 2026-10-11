@@ -5,7 +5,6 @@
 
 #include "horizon/core/core.hpp"
 #include "horizon/gfx/helper.hpp"
-
 #include "ui.hpp"
 
 app_t::app_t(int argc, char **argv) {
@@ -98,6 +97,7 @@ void app_t::run() {
 
         ui::draw_dockspace(ui_ctx);
         ui::draw_viewport(ui_ctx);
+        ui::draw_debug(ui_ctx);
 
         gfx::helper::imgui_endframe(*base, cmd);
         base->end_swapchain_renderpass();
