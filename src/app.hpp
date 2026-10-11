@@ -1,6 +1,7 @@
 #ifndef APP_HPP
 #define APP_HPP
 
+#include "horizon/core/components.hpp"
 #include "horizon/core/core.hpp"
 #include "horizon/core/window.hpp"
 
@@ -9,6 +10,8 @@
 #include "horizon/gfx/types.hpp"
 
 #include "ThreadPool.hpp"
+
+#include "grid.hpp"
 
 struct app_t {
   app_t(int argc, char **argv);
@@ -23,7 +26,7 @@ struct app_t {
 
   void create_buffer(uint32_t width, uint32_t height);
   void destroy_buffer();
-  void draw();
+  void draw(const core::camera_t &camera);
 
   core::ref<core::window_t> win;
   core::ref<gfx::context_t> ctx;
@@ -39,6 +42,8 @@ struct app_t {
   ThreadPool thread_pool{2 + std::thread::hardware_concurrency()};
 
   std::vector<std::future<void>> jobs;
+
+  grid_t grid{256};
 };
 
 #endif

@@ -1,4 +1,5 @@
 #include "app.hpp"
+
 #include <atomic>
 
 #define VK_NO_PROTOTYPES
@@ -6,7 +7,9 @@
 
 #include "horizon/core/core.hpp"
 #include "horizon/gfx/helper.hpp"
+
 #include "ui.hpp"
+#include "camera.hpp"
 
 app_t::app_t(int argc, char **argv) {
   win  = core::make_ref<core::window_t>("peace", 1200, 800);
@@ -35,20 +38,44 @@ app_t::~app_t() {
   gfx::helper::imgui_shutdown();
 }
 
-void app_t::draw() {
+inline math::vec3 sky_color(const math::vec3 &direction) {
+  const float      t = math::clamp(direction.y * 0.5f + 0.5f, 0.f, 1.f);
+  const math::vec3 sky_top{0.25f, 0.45f, 0.85f};
+  const math::vec3 sky_bottom{0.65f, 0.7f, 0.78f};
+  return math::mix(sky_bottom, sky_top, t);
+}
+
+inline uint32_t to_pixel(const math::vec3 &color) {
+  const auto to_u8 = [](float v) {
+    return uint32_t(math::clamp(v, 0.f, 1.f) * 255.f);
+  };
+  return 0xff000000u | (to_u8(color.x) << 0) |  //
+         (to_u8(color.y) << 8) |                //
+         (to_u8(color.z) << 16);
+}
+
+void app_t::draw(const core::camera_t &camera) {
   auto *pixels         = reinterpret_cast<uint32_t *>(base->map_buffer(buffer));
   auto [width, height] = image_dims();
+  float inv_width      = 1.f / width;
+  float inv_height     = 1.f / height;
 
   jobs.clear();
   jobs.reserve(height);
 
   for (uint32_t y = 0; y < height; ++y) {
-    const uint32_t g = uint32_t(float(y) / height * 255.f);
-    jobs.emplace_back(thread_pool.enqueue([pixels, width, height, y, g] {
+    jobs.emplace_back(thread_pool.enqueue([&, y] {
       const uint32_t row = y * width;
       for (uint32_t x = 0; x < width; ++x) {
-        const uint32_t r = uint32_t(float(x) / width * 255.f);
-        pixels[row + x]  = 0xff000000u | (r << 0) | (g << 8);
+        const math::vec2 uv = {float(x) * inv_width, float(y) * inv_height};
+        const ray_t      ray =
+            ray_t::create(uv, camera.inv_projection, camera.inv_view);
+        const hit_t hit = trace(ray, grid);
+        if (hit.did_hit) {
+          pixels[row + x] = hit.value;
+        } else {
+          pixels[row + x] = to_pixel(sky_color(ray.direction));
+        }
       }
     }));
   }
@@ -62,6 +89,8 @@ void app_t::run() {
                        1};  //
   core::frame_timer_t frame_timer{60.f};
 
+  editor_camera_t camera{*win};
+
   while (!win->should_close()) {
     core::clear_frame_function_times();
     win->poll_events();
@@ -70,10 +99,11 @@ void app_t::run() {
       break;
 
     core::timer::duration_t dt = frame_timer.update();
+    camera.update(dt.count(), ui_ctx.viewport_width, ui_ctx.viewport_height);
 
     base->begin();
 
-    draw();
+    draw(camera);
 
     auto [width, height] = image_dims();
 
