@@ -80,7 +80,7 @@ public:
   }
 
   float fov{45.0f};
-  float camera_speed_multiplyer{1.0f};
+  float camera_speed_multiplyer{10.0f};
   float far{10000.0f};
   float near{0.1f};
 
@@ -96,7 +96,7 @@ private:
   float _yaw{0.0f};
   float _pitch{0.0f};
   float _mouse_speed{0.005f};
-  float _mouse_sensitivity{100.0f};
+  float _mouse_sensitivity{10.0f};
 };
 
 #endif
