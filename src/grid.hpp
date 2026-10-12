@@ -120,7 +120,7 @@ inline hit_t trace(ray_t         ray,  //
 
   if (aabb_hit.tmin > 0.f) {
     ray.origin = ray.origin + ray.direction * aabb_hit.tmin;
-    ray.origin += ray.direction * 0.0001f;  // nudging a bit
+    ray.origin += ray.direction * 0.001f;  // nudging a bit
   }
 
   dda_grid_t dda = create_dda_grid(ray);
