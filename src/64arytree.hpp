@@ -20,12 +20,17 @@ struct node_t {
 };
 
 struct tree64_t {
-  static constexpr uint32_t num_levels = 5;
+  static constexpr uint32_t num_levels = 8;
   static constexpr uint32_t extent     = 1u << (num_levels * 2);
   // Note: 0 node_id is invalid
   std::vector<node_t> nodes;
   // indices contains both indices and data for leaf nodes
   std::vector<uint32_t> indices;
+
+  uint64_t memory_used() const {
+    return nodes.size() * sizeof(nodes[0]) +
+           indices.size() * sizeof(indices[0]);
+  }
 
   static constexpr uint32_t root_id = 1;
 
@@ -253,7 +258,7 @@ inline void generate(tree64_t &tree64, uint32_t seed = 1337) {
   math::random_t rng{};
   rng.generator.seed(seed);
 
-  const float e = float(tree64.extent);
+  const float e = math::min(float(tree64.extent), 1024.f);
   for (int blob = 0; blob < 40; blob++) {
     const math::vec3 center = rng.random_vec<3>(0.15f * e, 0.85f * e);
     const float      radius = rng.random_float(0.02f * e, 0.06f * e);

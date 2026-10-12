@@ -100,14 +100,16 @@ void app_t::run() {
 
   editor_camera_t camera{*win};
   {
-    core::timer::scope_timer_t timer{[](auto duration) {
-      horizon_info("generated grid in {}ms", duration.count());
+    core::timer::scope_timer_t timer{[&](auto duration) {
+      horizon_info("generated grid in {}ms and used {}MB", duration.count(),
+                   grid.memory_used() / (1024 * 1024));
     }};
     generate(grid);
   }
   {
-    core::timer::scope_timer_t timer{[](auto duration) {
-      horizon_info("generated tree64 in {}ms", duration.count());
+    core::timer::scope_timer_t timer{[&](auto duration) {
+      horizon_info("generated tree64 in {}ms and used {}MB", duration.count(),
+                   tree64.memory_used() / (1024 * 1024));
     }};
     generate(tree64);
   }

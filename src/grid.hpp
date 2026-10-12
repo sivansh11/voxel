@@ -17,6 +17,8 @@ struct grid_t {
   // value of 0 is air
   std::vector<uint32_t> values;
 
+  uint64_t memory_used() const { return values.size() * sizeof(values[0]); }
+
   grid_t(uint32_t extent) : extent(extent) {
     values.resize(extent * extent * extent);
   }
@@ -146,7 +148,7 @@ inline void generate(grid_t &grid, uint32_t seed = 1337) {
   math::random_t rng{};
   rng.generator.seed(seed);
 
-  const float e = float(grid.extent);
+  const float e = math::min(float(grid.extent), 1024.f);
   for (int blob = 0; blob < 40; blob++) {
     const math::vec3 center = rng.random_vec<3>(0.15f * e, 0.85f * e);
     const float      radius = rng.random_float(0.02f * e, 0.06f * e);
