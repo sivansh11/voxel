@@ -85,7 +85,7 @@ inline dda_grid_t create_dda_grid(const ray_t &ray) {
   return dda;
 }
 
-inline math::ivec3 dda_advance(dda_grid_t &dda) {
+inline float dda_advance(dda_grid_t &dda) {
   const int cmp_xy = dda.tmax.x < dda.tmax.y;
   const int cmp_xz = dda.tmax.x < dda.tmax.z;
   const int cmp_yz = dda.tmax.y < dda.tmax.z;
@@ -93,6 +93,10 @@ inline math::ivec3 dda_advance(dda_grid_t &dda) {
   const int mask_x = cmp_xy & cmp_xz;
   const int mask_y = (1 - cmp_xy) & cmp_yz;
   const int mask_z = (1 - cmp_xz) & (1 - cmp_yz);
+
+  const float t = mask_x * dda.tmax.x +  //
+                  mask_y * dda.tmax.y +  //
+                  mask_z * dda.tmax.z;
 
   dda.current.x += mask_x * dda.step.x;
   dda.current.y += mask_y * dda.step.y;
@@ -102,7 +106,7 @@ inline math::ivec3 dda_advance(dda_grid_t &dda) {
   dda.tmax.y += mask_y * dda.tdelta.y;
   dda.tmax.z += mask_z * dda.tdelta.z;
 
-  return {mask_x, mask_y, mask_z};
+  return t;
 }
 
 inline hit_t trace(ray_t         ray,  //
@@ -121,7 +125,7 @@ inline hit_t trace(ray_t         ray,  //
 
   dda_grid_t dda = create_dda_grid(ray);
 
-  math::ivec3 mask{0, 0, 0};
+  float entry = 0.f;
 
   while (grid.contains(dda.current)) {
     uint32_t value = grid.get(dda.current);
@@ -129,18 +133,10 @@ inline hit_t trace(ray_t         ray,  //
       hit.did_hit  = true;
       hit.value    = value;
       hit.position = dda.current;
-
-      if (mask.x != 0 || mask.y != 0 || mask.z != 0) {
-        float t = mask.x * (dda.tmax.x - dda.tdelta.x) +
-                  mask.y * (dda.tmax.y - dda.tdelta.y) +
-                  mask.z * (dda.tmax.z - dda.tdelta.z);
-        hit.t   = aabb_hit.tmin + t;
-      } else {
-        hit.t = aabb_hit.tmin;
-      }
+      hit.t        = aabb_hit.tmin + entry;
       return hit;
     }
-    mask = dda_advance(dda);
+    entry = dda_advance(dda);
   }
 
   return hit;
