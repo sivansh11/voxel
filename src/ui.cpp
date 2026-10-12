@@ -67,7 +67,6 @@ void draw_debug(context_t &ctx) {
   ImGui::Text("%f framerate", ImGui::GetIO().Framerate);
   ImGui::Text("current dims: %u, %u", ctx.viewport_width, ctx.viewport_height);
   ImGui::SliderFloat("scale", &ctx.scale, 0.01f, 1.f);
-  ImGui::Checkbox("trace tree64", &ctx.trace_tree64);
   ImGui::End();
 }
 

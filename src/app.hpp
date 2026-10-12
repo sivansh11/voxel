@@ -11,7 +11,6 @@
 
 #include "ThreadPool.hpp"
 
-#include "grid.hpp"
 #include "64arytree.hpp"
 
 struct app_t {
@@ -27,7 +26,7 @@ struct app_t {
 
   void create_buffer(uint32_t width, uint32_t height);
   void destroy_buffer();
-  void draw(const core::camera_t &camera, bool trace_tree64);
+  void draw(const core::camera_t &camera);
 
   core::ref<core::window_t> win;
   core::ref<gfx::context_t> ctx;
@@ -44,7 +43,6 @@ struct app_t {
 
   std::vector<std::future<void>> jobs;
 
-  grid_t   grid{1024};
   tree64_t tree64;
 };
 

@@ -11,7 +11,6 @@
 
 #include "ui.hpp"
 #include "camera.hpp"
-#include "grid.hpp"
 #include "64arytree.hpp"
 #include "camera.hpp"
 
@@ -58,7 +57,7 @@ inline uint32_t to_pixel(const math::vec3 &color) {
          (to_u8(color.z) << 16);
 }
 
-void app_t::draw(const core::camera_t &camera, bool trace_tree64) {
+void app_t::draw(const core::camera_t &camera) {
   auto *pixels         = reinterpret_cast<uint32_t *>(base->map_buffer(buffer));
   auto [width, height] = image_dims();
   float inv_width      = 1.f / width;
@@ -74,12 +73,7 @@ void app_t::draw(const core::camera_t &camera, bool trace_tree64) {
         const math::vec2 uv = {float(x) * inv_width, float(y) * inv_height};
         const ray_t      ray =
             ray_t::create(uv, camera.inv_projection, camera.inv_view);
-        hit_t hit;
-        if (trace_tree64) {
-          hit = trace(ray, tree64);
-        } else {
-          hit = trace(ray, grid);
-        }
+        hit_t hit = trace(ray, tree64);
         if (hit.did_hit) {
           pixels[row + x] = hit.value;
         } else {
@@ -101,13 +95,6 @@ void app_t::run() {
   editor_camera_t camera{*win};
   {
     core::timer::scope_timer_t timer{[&](auto duration) {
-      horizon_info("generated grid in {}ms and used {}MB", duration.count(),
-                   grid.memory_used() / (1024 * 1024));
-    }};
-    generate(grid);
-  }
-  {
-    core::timer::scope_timer_t timer{[&](auto duration) {
       horizon_info("generated tree64 in {}ms and used {}MB", duration.count(),
                    tree64.memory_used() / (1024 * 1024));
     }};
@@ -126,7 +113,7 @@ void app_t::run() {
 
     base->begin();
 
-    draw(camera, ui_ctx.trace_tree64);
+    draw(camera);
 
     auto [width, height] = image_dims();
 
