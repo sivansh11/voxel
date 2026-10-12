@@ -46,7 +46,7 @@ struct grid_t {
   }
 };
 
-struct dda_t {
+struct dda_grid_t {
   math::ivec3 current;  // current 3d pos of the ray
   math::ivec3 step;     // +1, -1, 0
   math::vec3  tdelta;   // how much in t to move 1.0 unit
@@ -54,8 +54,8 @@ struct dda_t {
                      // the next boundary
 };
 
-inline dda_t create_dda(const ray_t &ray) {
-  dda_t dda{};
+inline dda_grid_t create_dda_grid(const ray_t &ray) {
+  dda_grid_t dda{};
   dda.current = math::ivec3{math::floor(ray.origin)};
   dda.step    = math::sign(ray.direction);
   dda.tdelta  = math::abs(inverse(ray.direction));
@@ -85,7 +85,7 @@ inline dda_t create_dda(const ray_t &ray) {
   return dda;
 }
 
-inline math::ivec3 dda_advance(dda_t &dda) {
+inline math::ivec3 dda_advance(dda_grid_t &dda) {
   const int cmp_xy = dda.tmax.x < dda.tmax.y;
   const int cmp_xz = dda.tmax.x < dda.tmax.z;
   const int cmp_yz = dda.tmax.y < dda.tmax.z;
@@ -119,7 +119,7 @@ inline hit_t trace(ray_t         ray,  //
     ray.origin += ray.direction * 0.0001f;  // nudging a bit
   }
 
-  dda_t dda = create_dda(ray);
+  dda_grid_t dda = create_dda_grid(ray);
 
   math::ivec3 mask{0, 0, 0};
 
