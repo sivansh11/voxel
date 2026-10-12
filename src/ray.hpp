@@ -33,4 +33,11 @@ struct ray_t {
   float      tmin, tmax;
 };
 
+struct hit_t {
+  bool        did_hit{false};
+  float       t{0.f};
+  math::ivec3 position{0};
+  uint32_t    value{0};
+};
+
 #endif
