@@ -27,6 +27,8 @@ struct tree64_t {
   // indices contains both indices and data for leaf nodes
   std::vector<uint32_t> indices;
 
+  std::vector<uint32_t> free_nodes;
+
   uint64_t memory_used() const {
     return nodes.size() * sizeof(nodes[0]) +
            indices.size() * sizeof(indices[0]);
@@ -40,6 +42,13 @@ struct tree64_t {
   }
 
   uint32_t alloc_node() {
+    if (!free_nodes.empty()) {
+      uint32_t node_id = free_nodes.back();
+      free_nodes.pop_back();
+      nodes[node_id].mask = 0;
+      nodes[node_id].meta = 0;
+      return node_id;
+    }
     uint32_t node_id = nodes.size();
     node_t   node{};
     node.mask  = 0;
@@ -80,6 +89,36 @@ struct tree64_t {
     uint8_t i                         = local_index(pos, 0);
     indices[nodes[node_id].first + i] = value;
     nodes[node_id].mask |= 1ull << i;
+    return true;
+  }
+
+  bool remove(const math::ivec3 &pos) {
+    if (!contains(pos)) return false;
+    uint32_t node_id = root_id;
+    uint32_t stack[num_levels];
+    for (int32_t level = num_levels - 1; level > 0; level--) {
+      uint8_t i = local_index(pos, level);
+      if (!((nodes[node_id].mask >> i) & 0b1)) return false;
+      stack[level] = node_id;
+      node_id      = indices[nodes[node_id].first + i];
+      if (!node_id) return false;
+    }
+
+    stack[0]  = node_id;
+    uint8_t i = local_index(pos, 0);
+    if (!((nodes[node_id].mask >> i) & 0b1)) return false;
+    indices[nodes[node_id].first + i] = 0;
+    nodes[node_id].mask &= ~(1ull << i);
+
+    for (int32_t level = 0; level < num_levels - 1; level++) {
+      uint32_t node_id = stack[level];
+      if (nodes[node_id].mask) return true;
+      free_nodes.push_back(node_id);
+      uint32_t parent_id                  = stack[level + 1];
+      uint8_t  i                          = local_index(pos, level + 1);
+      indices[nodes[parent_id].first + i] = 0;
+      nodes[parent_id].mask &= ~(1ull << i);
+    }
     return true;
   }
 };
