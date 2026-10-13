@@ -129,7 +129,8 @@ struct dda_tree64_t {
   math::vec3  tdelta;   // how much in t to move 1.0 unit
   math::vec3  tmax;  // weird naming, but presents how much to move in t to hit
                      // the next boundary
-  int32_t current_level;  // current_level used for advancing
+  math::ivec3 mask{0};        // axis mask for last step
+  int32_t     current_level;  // current_level used for advancing
 };
 
 inline dda_tree64_t create_dda_tree64(const ray_t &ray) {
@@ -199,6 +200,8 @@ inline float dda_advance(dda_tree64_t &dda, const ray_t &ray) {
   const int mask_y = (1 - cmp_xy) & cmp_yz;
   const int mask_z = (1 - cmp_xz) & (1 - cmp_yz);
 
+  dda.mask = math::ivec3{mask_x, mask_y, mask_z};
+
   // dda.current.x += mask_x * dda.step.x;
   // dda.current.y += mask_y * dda.step.y;
   // dda.current.z += mask_z * dda.step.z;
@@ -247,6 +250,8 @@ inline hit_t trace(ray_t           ray,  //
   aabb_hit_t aabb_hit = intersect_aabb(tree64_min, tree64_max, ray);
   if (!aabb_hit.did_intersect()) return hit;
 
+  math::vec3 normal = aabb_hit.normal;
+
   if (aabb_hit.tmin > 0.f) {
     ray.origin = ray.origin + ray.direction * aabb_hit.tmin;
     ray.origin += ray.direction * 0.001f;  // nudging a bit
@@ -276,6 +281,16 @@ inline hit_t trace(ray_t           ray,  //
         hit.value    = tree64.indices[node.first + i];
         hit.position = dda.current;
         hit.t        = aabb_hit.tmin + entry;
+
+        if (dda.mask == math::ivec3{0}) {
+          hit.normal = normal;
+        } else {
+          hit.normal = math::vec3{
+              -float(dda.mask.x * dda.step.x),  //
+              -float(dda.mask.y * dda.step.y),  //
+              -float(dda.mask.z * dda.step.z)   //
+          };
+        }
         return hit;
       }
       stack[dda.current_level - 1] = tree64.indices[node.first + i];

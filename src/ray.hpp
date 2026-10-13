@@ -37,6 +37,7 @@ struct hit_t {
   bool        did_hit{false};
   float       t{0.f};
   math::ivec3 position{0};
+  math::ivec3 normal{0};
   uint32_t    value{0};
 };
 
