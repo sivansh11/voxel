@@ -6,8 +6,9 @@
 #include "ray.hpp"
 
 struct aabb_hit_t {
-  bool  did_intersect() { return tmin <= tmax; }
-  float tmin, tmax;
+  bool       did_intersect() { return tmin <= tmax; }
+  float      tmin, tmax;
+  math::vec3 normal;
 };
 
 inline aabb_hit_t intersect_aabb(const math::vec3 _min, const math::vec3 _max,
@@ -23,6 +24,12 @@ inline aabb_hit_t intersect_aabb(const math::vec3 _min, const math::vec3 _max,
   float _tmax =
       math::min(tmax[0], math::min(tmax[1], math::min(tmax[2], ray.tmax)));
   aabb_hit_t hit = aabb_hit_t(_tmin, _tmax);
+
+  hit.normal =
+      math::ivec3{(tmin.x == _tmin) * (ray.direction.x < 0.f ? 1.f : -1.f),
+                  (tmin.y == _tmin) * (ray.direction.y < 0.f ? 1.f : -1.f),
+                  (tmin.z == _tmin) * (ray.direction.z < 0.f ? 1.f : -1.f)};
+
   return hit;
 }
 
