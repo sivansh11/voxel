@@ -39,7 +39,7 @@ struct app_t {
   gfx::handle_image_view_t            image_view;
   gfx::handle_managed_buffer_t        buffer;
 
-  ThreadPool thread_pool{2 + std::thread::hardware_concurrency()};
+  ThreadPool thread_pool{std::thread::hardware_concurrency()};
 
   std::vector<std::future<void>> jobs;
 
