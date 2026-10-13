@@ -77,7 +77,8 @@ void app_t::draw(const core::camera_t &camera) {
     jobs.emplace_back(thread_pool.enqueue([&, y] {
       const uint32_t row = y * width;
       for (uint32_t x = 0; x < width; ++x) {
-        const math::vec2 uv = {float(x) * inv_width, float(y) * inv_height};
+        const math::vec2 uv = {(float(x) + 0.5f) * inv_width,
+                               (float(y) + 0.5f) * inv_height};
         const ray_t      ray =
             ray_t::create(uv, camera.inv_projection, camera.inv_view);
         hit_t hit = trace(ray, world.tree);
