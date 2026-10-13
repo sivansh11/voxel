@@ -1,5 +1,5 @@
-#ifndef _64ARY_TREE_HPP
-#define _64ARY_TREE_HPP
+#ifndef TREE64_HPP
+#define TREE64_HPP
 
 #include <cstdint>
 #include <limits>

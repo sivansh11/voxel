@@ -11,7 +11,7 @@
 
 #include "ThreadPool.hpp"
 
-#include "64arytree.hpp"
+#include "tree64.hpp"
 
 struct app_t {
   app_t(int argc, char **argv);

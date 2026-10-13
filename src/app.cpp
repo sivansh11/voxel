@@ -11,7 +11,7 @@
 
 #include "ui.hpp"
 #include "camera.hpp"
-#include "64arytree.hpp"
+#include "tree64.hpp"
 #include "camera.hpp"
 
 app_t::app_t(int argc, char **argv) {
