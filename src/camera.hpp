@@ -11,7 +11,7 @@
 class editor_camera_t : public core::camera_t {
  public:
   editor_camera_t(core::window_t &window) : _window(window) {
-    inv_view[3] = math::vec4{0, 0, 0, 1.f};
+    inv_view[3] = math::vec4{256, 256, 256, 1.f};
     double mouse_x, mouse_y;
     glfwGetCursorPos(_window.window(), &mouse_x, &mouse_y);
     _initial_mouse       = {float(mouse_x), float(mouse_y)};
