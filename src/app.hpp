@@ -11,7 +11,7 @@
 
 #include "ThreadPool.hpp"
 
-#include "tree64.hpp"
+#include "world.hpp"
 
 struct app_t {
   app_t(int argc, char **argv);
@@ -43,7 +43,7 @@ struct app_t {
 
   std::vector<std::future<void>> jobs;
 
-  tree64_t tree64;
+  world_t world;
 };
 
 #endif

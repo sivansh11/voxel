@@ -11,7 +11,7 @@
 class editor_camera_t : public core::camera_t {
  public:
   editor_camera_t(core::window_t &window) : _window(window) {
-    inv_view[3] = math::vec4{512.f, 512.f, -1000.f, 1.f};
+    inv_view[3] = math::vec4{512.f, 0.f, 512.f, 1.f};
     double mouse_x, mouse_y;
     glfwGetCursorPos(_window.window(), &mouse_x, &mouse_y);
     _initial_mouse       = {float(mouse_x), float(mouse_y)};
@@ -76,7 +76,7 @@ class editor_camera_t : public core::camera_t {
     core::camera_t::update();
   }
 
-  float fov{45.0f};
+  float fov{90.0f};
   float camera_speed_multiplyer{10.0f};
   float far{10000.0f};
   float near{0.1f};

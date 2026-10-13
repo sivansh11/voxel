@@ -73,7 +73,7 @@ void app_t::draw(const core::camera_t &camera) {
         const math::vec2 uv = {float(x) * inv_width, float(y) * inv_height};
         const ray_t      ray =
             ray_t::create(uv, camera.inv_projection, camera.inv_view);
-        hit_t hit = trace(ray, tree64);
+        hit_t hit = trace(ray, world.tree);
         if (hit.did_hit) {
           pixels[row + x] = hit.value;
         } else {
@@ -96,9 +96,9 @@ void app_t::run() {
   {
     core::timer::scope_timer_t timer{[&](auto duration) {
       horizon_info("generated tree64 in {}ms and used {}MB", duration.count(),
-                   tree64.memory_used() / (1024 * 1024));
+                   world.tree.memory_used() / (1024 * 1024));
     }};
-    generate(tree64);
+    // generate(tree64);
   }
 
   while (!win->should_close()) {
@@ -146,7 +146,63 @@ void app_t::run() {
         gfx::helper::imgui_newframe();
 
         ui::draw_dockspace(ui_ctx);
-        ui::draw_viewport(ui_ctx);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+        ImGuiWindowClass window_class;
+        window_class.DockNodeFlagsOverrideSet =
+            ImGuiDockNodeFlags_AutoHideTabBar;
+        ImGui::SetNextWindowClass(&window_class);
+        ImGuiWindowFlags viewPortFlags =
+            ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoDecoration;
+        ImGui::Begin("viewport", nullptr, viewPortFlags);
+
+        auto vp = ImGui::GetWindowSize();
+        if (ui_ctx.viewport_width != vp.x * ui_ctx.scale ||
+            ui_ctx.viewport_height != vp.y * ui_ctx.scale) {
+          ui_ctx.viewport_width  = vp.x * ui_ctx.scale;
+          ui_ctx.viewport_height = vp.y * ui_ctx.scale;
+        }
+        ImGui::Image(reinterpret_cast<ImTextureID>(
+                         reinterpret_cast<void *>(ui_ctx.vk_ds)),
+                     ImGui::GetContentRegionAvail());
+
+        if (ImGui::IsItemHovered() &&
+            ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+          ImVec2     mouse_pos = ImGui::GetMousePos();
+          ImVec2     item_pos  = ImGui::GetItemRectMin();
+          ImVec2     item_size = ImGui::GetItemRectSize();
+          math::vec2 uv        = {(mouse_pos.x - item_pos.x) / item_size.x,
+                                  (mouse_pos.y - item_pos.y) / item_size.y};
+          uv = math::clamp(uv, math::vec2(0.0f), math::vec2(1.0f));
+          horizon_info("{}", math::to_string(uv));
+
+          const ray_t ray =
+              ray_t::create(uv, camera.inv_projection, camera.inv_view);
+          hit_t hit = trace(ray, world.tree);
+          if (hit.did_hit) {
+            world.tree.remove(hit.position);
+          }
+        }
+
+        if (ImGui::IsItemHovered() && ImGui::IsKeyPressed(ImGuiKey_T)) {
+          ImVec2     mouse_pos = ImGui::GetMousePos();
+          ImVec2     item_pos  = ImGui::GetItemRectMin();
+          ImVec2     item_size = ImGui::GetItemRectSize();
+          math::vec2 uv        = {(mouse_pos.x - item_pos.x) / item_size.x,
+                                  (mouse_pos.y - item_pos.y) / item_size.y};
+          uv = math::clamp(uv, math::vec2(0.0f), math::vec2(1.0f));
+          horizon_info("{}", math::to_string(uv));
+
+          const ray_t ray =
+              ray_t::create(uv, camera.inv_projection, camera.inv_view);
+          hit_t hit = trace(ray, world.tree);
+          if (hit.did_hit) {
+            world.tree.set(hit.position + hit.normal, 0xff0000ffu);
+          }
+        }
+
+        ImGui::End();
+        ImGui::PopStyleVar(2);
         ui::draw_debug(ui_ctx);
 
         gfx::helper::imgui_endframe(*base, cmd);
