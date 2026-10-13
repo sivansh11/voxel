@@ -17,6 +17,13 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(horizon)
 
 FetchContent_Declare(
+  model
+  GIT_REPOSITORY https://github.com/sivansh11/model
+  GIT_TAG main
+)
+FetchContent_MakeAvailable(model)
+
+FetchContent_Declare(
   ImGuiFileDialog
   GIT_REPOSITORY https://github.com/aiekick/ImGuiFileDialog
 )
@@ -29,6 +36,7 @@ add_executable(peace ${SRC_FILES})
 
 target_link_libraries(peace
   PUBLIC horizon
+  PUBLIC model
   PUBLIC ImGuiFileDialog
 )
 

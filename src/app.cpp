@@ -1,6 +1,7 @@
 #include "app.hpp"
 
 #include <atomic>
+#include <stdexcept>
 #include "horizon/core/logger.hpp"
 
 #define VK_NO_PROTOTYPES
@@ -11,10 +12,13 @@
 
 #include "ui.hpp"
 #include "camera.hpp"
+#include "voxelizer.hpp"
 #include "tree64.hpp"
 #include "camera.hpp"
 
 app_t::app_t(int argc, char **argv) {
+  if (argc != 3) throw std::runtime_error("[peace] [path] [extent]");
+
   win  = core::make_ref<core::window_t>("peace", 1200, 800);
   ctx  = core::make_ref<gfx::context_t>(true);
   base = core::make_ref<gfx::base_t>(win, ctx);
@@ -34,6 +38,9 @@ app_t::app_t(int argc, char **argv) {
       {.handle_descriptor_set_layout = imgui_dsl});
 
   create_image(1, 1);
+
+  auto voxels = voxelize(base, argv[1], std::stoi(argv[2]));
+  world       = world_t{voxels};
 }
 
 app_t::~app_t() {
@@ -95,8 +102,9 @@ void app_t::run() {
   editor_camera_t camera{*win};
   {
     core::timer::scope_timer_t timer{[&](auto duration) {
-      horizon_info("generated tree64 in {}ms and used {}MB", duration.count(),
-                   world.tree.memory_used() / (1024 * 1024));
+      horizon_info("tree64 in {}ms and used {}MB ({})", duration.count(),
+                   world.tree.memory_used() / (1024 * 1024),
+                   world.tree.memory_used());
     }};
     // generate(tree64);
   }
