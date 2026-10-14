@@ -3,10 +3,10 @@
     "version": "0.2.0",
     "configurations": [
     {
-       "name": "peace",
+       "name": "voxel",
        "type": "cppdbg",
        "request": "launch",
-       "program": "${workspaceFolder}/build/peace",
+       "program": "${workspaceFolder}/build/voxel",
        "args": [""],
        "environment": [],
        "cwd": "${workspaceFolder}"

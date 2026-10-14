@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(peace)
+project(voxel)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
@@ -32,15 +32,15 @@ target_link_libraries(ImGuiFileDialog PUBLIC imgui_cmake)
 
 file(GLOB_RECURSE SRC_FILES src/*cpp)
 
-add_executable(peace ${SRC_FILES})
+add_executable(voxel ${SRC_FILES})
 
-target_link_libraries(peace
+target_link_libraries(voxel
   PUBLIC horizon
   PUBLIC model
   PUBLIC ImGuiFileDialog
 )
 
-target_include_directories(peace
+target_include_directories(voxel
   PUBLIC src
 )
 

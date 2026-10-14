@@ -17,9 +17,9 @@
 #include "camera.hpp"
 
 app_t::app_t(int argc, char **argv) {
-  if (argc != 3) throw std::runtime_error("[peace] [path] [extent]");
+  if (argc != 3) throw std::runtime_error("[voxel] [path] [extent]");
 
-  win  = core::make_ref<core::window_t>("peace", 1200, 800);
+  win  = core::make_ref<core::window_t>("voxel", 1200, 800);
   ctx  = core::make_ref<gfx::context_t>(true);
   base = core::make_ref<gfx::base_t>(win, ctx);
 
