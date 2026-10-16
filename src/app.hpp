@@ -26,7 +26,6 @@ struct app_t {
 
   void create_buffer(uint32_t width, uint32_t height);
   void destroy_buffer();
-  void draw(const core::camera_t &camera);
 
   core::ref<core::window_t> win;
   core::ref<gfx::context_t> ctx;

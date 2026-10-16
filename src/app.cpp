@@ -64,36 +64,6 @@ inline uint32_t to_pixel(const math::vec3 &color) {
          (to_u8(color.z) << 16);
 }
 
-void app_t::draw(const core::camera_t &camera) {
-  auto *pixels         = reinterpret_cast<uint32_t *>(base->map_buffer(buffer));
-  auto [width, height] = image_dims();
-  float inv_width      = 1.f / width;
-  float inv_height     = 1.f / height;
-
-  jobs.clear();
-  jobs.reserve(height);
-
-  for (uint32_t y = 0; y < height; ++y) {
-    jobs.emplace_back(thread_pool.enqueue([&, y] {
-      const uint32_t row = y * width;
-      for (uint32_t x = 0; x < width; ++x) {
-        const math::vec2 uv = {(float(x) + 0.5f) * inv_width,
-                               (float(y) + 0.5f) * inv_height};
-        const ray_t      ray =
-            ray_t::create(uv, camera.inv_projection, camera.inv_view);
-        hit_t hit = trace(ray, world.tree);
-        if (hit.did_hit) {
-          pixels[row + x] = hit.value;
-        } else {
-          pixels[row + x] = to_pixel(sky_color(ray.direction));
-        }
-      }
-    }));
-  }
-
-  for (auto &f : jobs) f.get();
-}
-
 void app_t::run() {
   ui::context_t ui_ctx{ctx->get_descriptor_set(imgui_ds).vk_descriptor_set,
                        1,   //
@@ -122,7 +92,37 @@ void app_t::run() {
 
     base->begin();
 
-    draw(camera);
+    {
+      core::timer::scope_timer_t _{[](auto duration) {
+        horizon_info("draw took {}ms", duration.count());
+      }};
+      auto *pixels = reinterpret_cast<uint32_t *>(base->map_buffer(buffer));
+      auto [width, height] = image_dims();
+      float inv_width      = 1.f / width;
+      float inv_height     = 1.f / height;
+
+      jobs.clear();
+      jobs.reserve(height);
+
+      for (uint32_t y = 0; y < height; ++y) {
+        jobs.emplace_back(thread_pool.enqueue([&, y] {
+          const uint32_t row = y * width;
+          for (uint32_t x = 0; x < width; ++x) {
+            const math::vec2 uv = {(float(x) + 0.5f) * inv_width,
+                                   (float(y) + 0.5f) * inv_height};
+            const ray_t      ray =
+                ray_t::create(uv, camera.inv_projection, camera.inv_view);
+            hit_t hit = trace(ray, world.tree);
+            if (hit.did_hit) {
+              pixels[row + x] = hit.value;
+            } else {
+              pixels[row + x] = to_pixel(sky_color(ray.direction));
+            }
+          }
+        }));
+      }
+      for (auto &f : jobs) f.get();
+    }
 
     auto [width, height] = image_dims();
 
