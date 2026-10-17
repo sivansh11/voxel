@@ -9,6 +9,8 @@
 #include "horizon/gfx/base.hpp"
 #include "horizon/gfx/types.hpp"
 
+#include "ThreadPool.hpp"
+
 #include "world.hpp"
 
 struct app_t {
@@ -21,6 +23,9 @@ struct app_t {
   void                          create_image(uint32_t width, uint32_t height);
   std::pair<uint32_t, uint32_t> image_dims();
   void                          destroy_image();
+
+  void create_buffer(uint32_t width, uint32_t height);
+  void destroy_buffer();
 
   void create_pipeline();
   void destroy_pipeline();
@@ -38,6 +43,11 @@ struct app_t {
   gfx::handle_image_t                  image;
   gfx::handle_image_view_t             image_view;
   gfx::handle_bindless_storage_image_t bindless_image;
+  gfx::handle_managed_buffer_t         buffer;
+
+  ThreadPool thread_pool{std::thread::hardware_concurrency()};
+
+  std::vector<std::future<void>> jobs;
 
   gfx::handle_pipeline_layout_t trace_pl;
   gfx::handle_shader_t          trace_shader;
