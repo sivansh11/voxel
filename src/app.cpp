@@ -197,10 +197,10 @@ void app_t::run() {
 
     base->begin();
 
+    static float draw_duration = 0;
     {
-      core::timer::scope_timer_t _{[](auto duration) {
-        horizon_info("draw took {}ms", duration.count());
-      }};
+      core::timer::scope_timer_t _{
+          [](auto duration) { draw_duration = duration.count(); }};
       auto *pixels = reinterpret_cast<uint32_t *>(base->map_buffer(buffer));
       auto [width, height] = image_dims();
       float inv_width      = 1.f / width;
@@ -371,6 +371,7 @@ void app_t::run() {
 
         // debug
         ImGui::Begin("debug");
+        ImGui::Text("draw took %fms", draw_duration);
         ImGui::Text("%f framerate", ImGui::GetIO().Framerate);
         ImGui::Text("current dims: %u, %u", ui_ctx.viewport_width,
                     ui_ctx.viewport_height);
