@@ -1,20 +1,21 @@
 #include "app.hpp"
 
-#include <atomic>
 #include <stdexcept>
-#include "horizon/core/logger.hpp"
+
+#include "imgui.h"
+
+#include <GLFW/glfw3.h>
 
 #define VK_NO_PROTOTYPES
 #include <vulkan/vulkan_core.h>
 
+#include "horizon/core/components.hpp"
+#include "horizon/core/logger.hpp"
 #include "horizon/core/core.hpp"
 #include "horizon/gfx/helper.hpp"
 
-#include "ui.hpp"
-#include "camera.hpp"
 #include "voxelizer.hpp"
 #include "tree64.hpp"
-#include "camera.hpp"
 
 app_t::app_t(int argc, char **argv) {
   if (argc != 3) throw std::runtime_error("[voxel] [path] [extent]");
@@ -71,13 +72,113 @@ struct ui_context_t {
   float           scale = 0.125f;
 };
 
+struct camera_controller_t : core::camera_t {
+  explicit camera_controller_t(core::window_t &window) : _window(window) {
+    _front = {glm::cos(glm::radians(_yaw)) * glm::cos(glm::radians(_pitch)),
+              glm::sin(glm::radians(_pitch)),
+              glm::sin(glm::radians(_yaw)) * glm::cos(glm::radians(_pitch))};
+    update_view({256.f, 256.f, 256.f});
+  }
+
+  bool captured() const { return _captured; }
+
+  void capture() {
+    if (_captured) return;
+    _captured      = true;
+    _just_captured = true;
+    glfwSetInputMode(_window.window(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+  }
+
+  void release() {
+    if (!_captured) return;
+    _captured = false;
+    glfwSetInputMode(_window.window(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+  }
+
+  void update_view(const math::vec3 &position) {
+    _position = position;
+    view      = glm::lookAt(_position, _position + _front, glm::vec3{0, 1, 0});
+    core::camera_t::update();
+  }
+
+  void update_projection(float aspect_ratio) {
+    static float s_aspect_ratio = 0;
+    if (s_aspect_ratio != aspect_ratio) {
+      projection =
+          glm::perspective(glm::radians(_fov), aspect_ratio, _near, _far) *
+          math::scale(math::mat4{1.f}, math::vec3{1.f, -1.f, 1.f});
+      s_aspect_ratio = aspect_ratio;
+    }
+  }
+
+  void update(float dt, float width, float height) {
+    update_projection(width / height);
+
+    if (_captured) {
+      ImGuiIO &io = ImGui::GetIO();
+
+      if (_just_captured) {
+        _just_captured = false;
+      } else {
+        const glm::vec2 diff{io.MouseDelta.x / width,
+                             -io.MouseDelta.y / height};
+        _yaw += diff.x * _mouse_sensitivity;
+        _pitch += diff.y * _mouse_sensitivity;
+        _pitch = glm::clamp(_pitch, -89.0f, 89.0f);
+      }
+
+      const float velocity = _mouse_speed * dt * _speed_multiplyer;
+      glm::vec3   position = _position;
+
+      if (ImGui::IsKeyDown(ImGuiKey_W)) position += _front * velocity;
+      if (ImGui::IsKeyDown(ImGuiKey_S)) position -= _front * velocity;
+      if (ImGui::IsKeyDown(ImGuiKey_D)) position += _right * velocity;
+      if (ImGui::IsKeyDown(ImGuiKey_A)) position -= _right * velocity;
+      if (ImGui::IsKeyDown(ImGuiKey_Space)) position += _up * velocity;
+      if (ImGui::IsKeyDown(ImGuiKey_LeftShift)) position -= _up * velocity;
+
+      _position = position;
+    }
+
+    _front.x = glm::cos(glm::radians(_yaw)) * glm::cos(glm::radians(_pitch));
+    _front.y = glm::sin(glm::radians(_pitch));
+    _front.z = glm::sin(glm::radians(_yaw)) * glm::cos(glm::radians(_pitch));
+    _right   = glm::normalize(glm::cross(_front, glm::vec3{0, 1, 0}));
+    _up      = glm::normalize(glm::cross(_right, _front));
+
+    view = glm::lookAt(_position, _position + _front, glm::vec3{0, 1, 0});
+    core::camera_t::update();
+  }
+
+  float _fov{90.0f};
+  float _speed_multiplyer{10.0f};
+  float _far{10000.0f};
+  float _near{0.1f};
+
+ private:
+  core::window_t &_window;
+
+  bool _captured{false};
+  bool _just_captured{false};
+
+  glm::vec3 _position{256.f, 256.f, 256.f};
+  glm::vec3 _front{0.0f};
+  glm::vec3 _up{0.0f, 1.0f, 0.0f};
+  glm::vec3 _right{0.0f};
+
+  float _yaw{90.0f};
+  float _pitch{0.0f};
+  float _mouse_speed{0.005f};
+  float _mouse_sensitivity{10.0f};
+};
+
 void app_t::run() {
   ui_context_t ui_ctx{ctx->get_descriptor_set(imgui_ds).vk_descriptor_set,
                       1,   //
                       1};  //
   core::frame_timer_t frame_timer{60.f};
 
-  editor_camera_t camera{*win};
+  camera_controller_t camera_controller{*win};
   {
     core::timer::scope_timer_t timer{[&](auto duration) {
       horizon_info("tree64 in {}ms and used {}MB ({})", duration.count(),
@@ -90,12 +191,9 @@ void app_t::run() {
   while (!win->should_close()) {
     core::clear_frame_function_times();
     win->poll_events();
-    if (win->get_key_pressed(core::key_t::e_q) ||
-        win->get_key_pressed(core::key_t::e_escape))
-      break;
+    if (win->get_key_pressed(core::key_t::e_escape)) break;
 
     core::timer::duration_t dt = frame_timer.update();
-    camera.update(dt.count(), ui_ctx.viewport_width, ui_ctx.viewport_height);
 
     base->begin();
 
@@ -118,7 +216,8 @@ void app_t::run() {
             const math::vec2 uv = {(float(x) + 0.5f) * inv_width,
                                    (float(y) + 0.5f) * inv_height};
             const ray_t      ray =
-                ray_t::create(uv, camera.inv_projection, camera.inv_view);
+                ray_t::create(uv, camera_controller.inv_projection,
+                              camera_controller.inv_view);
             hit_t hit = trace(ray, world.tree);
             if (hit.did_hit) {
               pixels[row + x] = hit.value;
@@ -216,6 +315,21 @@ void app_t::run() {
         ImGui::Image(reinterpret_cast<ImTextureID>(
                          reinterpret_cast<void *>(ui_ctx.vk_ds)),
                      ImGui::GetContentRegionAvail());
+        if (!camera_controller.captured() && ImGui::IsItemHovered() &&
+            ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+          camera_controller.capture();
+        }
+
+        if (camera_controller.captured()) {
+          float wheel = ImGui::GetIO().MouseWheel;
+          if (wheel) camera_controller._speed_multiplyer += wheel;
+        }
+        camera_controller.update(dt.count(), ui_ctx.viewport_width,
+                                 ui_ctx.viewport_height);
+
+        if (camera_controller.captured()) {
+          if (ImGui::IsKeyPressed(ImGuiKey_Q)) camera_controller.release();
+        }
 
         if (ImGui::IsItemHovered() &&
             ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
@@ -227,9 +341,9 @@ void app_t::run() {
           uv = math::clamp(uv, math::vec2(0.0f), math::vec2(1.0f));
           horizon_info("{}", math::to_string(uv));
 
-          const ray_t ray =
-              ray_t::create(uv, camera.inv_projection, camera.inv_view);
-          hit_t hit = trace(ray, world.tree);
+          const ray_t ray = ray_t::create(uv, camera_controller.inv_projection,
+                                          camera_controller.inv_view);
+          hit_t       hit = trace(ray, world.tree);
           if (hit.did_hit) {
             world.tree.remove(hit.position);
           }
@@ -244,9 +358,9 @@ void app_t::run() {
           uv = math::clamp(uv, math::vec2(0.0f), math::vec2(1.0f));
           horizon_info("{}", math::to_string(uv));
 
-          const ray_t ray =
-              ray_t::create(uv, camera.inv_projection, camera.inv_view);
-          hit_t hit = trace(ray, world.tree);
+          const ray_t ray = ray_t::create(uv, camera_controller.inv_projection,
+                                          camera_controller.inv_view);
+          hit_t       hit = trace(ray, world.tree);
           if (hit.did_hit) {
             world.tree.set(hit.position + hit.normal, 0xff0000ffu);
           }
@@ -261,6 +375,8 @@ void app_t::run() {
         ImGui::Text("current dims: %u, %u", ui_ctx.viewport_width,
                     ui_ctx.viewport_height);
         ImGui::SliderFloat("scale", &ui_ctx.scale, 0.01f, 1.f);
+        ImGui::SliderFloat("camera speed", &camera_controller._speed_multiplyer,
+                           1.f, 1000.f);
         ImGui::End();
 
         gfx::helper::imgui_endframe(*base, cmd);
