@@ -169,7 +169,7 @@ struct camera_controller_t : core::camera_t {
   float _yaw{90.0f};
   float _pitch{0.0f};
   float _mouse_speed{0.005f};
-  float _mouse_sensitivity{10.0f};
+  float _mouse_sensitivity{30.0f};
 };
 
 void app_t::run() {
