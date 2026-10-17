@@ -64,10 +64,17 @@ inline uint32_t to_pixel(const math::vec3 &color) {
          (to_u8(color.z) << 16);
 }
 
+struct ui_context_t {
+  VkDescriptorSet vk_ds;
+  uint32_t        viewport_width;
+  uint32_t        viewport_height;
+  float           scale = 0.125f;
+};
+
 void app_t::run() {
-  ui::context_t ui_ctx{ctx->get_descriptor_set(imgui_ds).vk_descriptor_set,
-                       1,   //
-                       1};  //
+  ui_context_t ui_ctx{ctx->get_descriptor_set(imgui_ds).vk_descriptor_set,
+                      1,   //
+                      1};  //
   core::frame_timer_t frame_timer{60.f};
 
   editor_camera_t camera{*win};
@@ -154,7 +161,42 @@ void app_t::run() {
         base->begin_swapchain_renderpass();
         gfx::helper::imgui_newframe();
 
-        ui::draw_dockspace(ui_ctx);
+        // dockspace
+        ImGuiDockNodeFlags dockspaceFlags =
+            ImGuiDockNodeFlags_None & ~ImGuiDockNodeFlags_PassthruCentralNode;
+        ImGuiWindowFlags windowFlags =
+            ImGuiWindowFlags_NoDocking |              //
+            ImGuiWindowFlags_NoTitleBar |             //
+            ImGuiWindowFlags_NoCollapse |             //
+            ImGuiWindowFlags_NoResize |               //
+            ImGuiWindowFlags_NoMove |                 //
+            ImGuiWindowFlags_NoBringToFrontOnFocus |  //
+            ImGuiWindowFlags_NoNavFocus |             //
+            ImGuiWindowFlags_NoBackground |           //
+            ImGuiWindowFlags_NoDecoration;
+
+        bool dockSpace = true;
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+        auto mainViewPort = ImGui::GetMainViewport();
+        ImGui::SetNextWindowPos(mainViewPort->WorkPos);
+        ImGui::SetNextWindowSize(mainViewPort->WorkSize);
+        ImGui::SetNextWindowViewport(mainViewPort->ID);
+
+        ImGui::Begin("DockSpace", &dockSpace, windowFlags);
+        ImGuiID dockspaceID = ImGui::GetID("DockSpace");
+        ImGui::DockSpace(dockspaceID, ImGui::GetContentRegionAvail(),
+                         dockspaceFlags);
+        if (ImGui::BeginMainMenuBar()) {
+          if (ImGui::BeginMenu("menu")) {
+            ImGui::EndMenu();
+          }
+          ImGui::EndMainMenuBar();
+        }
+        ImGui::End();
+        ImGui::PopStyleVar(2);
+
+        // viewport
         ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
         ImGuiWindowClass window_class;
@@ -212,7 +254,14 @@ void app_t::run() {
 
         ImGui::End();
         ImGui::PopStyleVar(2);
-        ui::draw_debug(ui_ctx);
+
+        // debug
+        ImGui::Begin("debug");
+        ImGui::Text("%f framerate", ImGui::GetIO().Framerate);
+        ImGui::Text("current dims: %u, %u", ui_ctx.viewport_width,
+                    ui_ctx.viewport_height);
+        ImGui::SliderFloat("scale", &ui_ctx.scale, 0.01f, 1.f);
+        ImGui::End();
 
         gfx::helper::imgui_endframe(*base, cmd);
         base->end_swapchain_renderpass();
