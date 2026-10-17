@@ -348,8 +348,8 @@ inline float3 unpack_color(const uint32_t value) {
 [numthreads(8, 8, 1)]
 void compute_main(uint3 dispatch_thread_id : SV_DispatchThreadID, uint group_index : SV_GroupIndex) {
   if (dispatch_thread_id.x >= pc.width || dispatch_thread_id.y >= pc.height) return;
-  const float u = float(dispatch_thread_id.x) / float(pc.width - 1);
-  const float v = float(dispatch_thread_id.y) / float(pc.height - 1);
+  const float u = (float(dispatch_thread_id.x) + 0.5f) / float(pc.width);
+  const float v = (float(dispatch_thread_id.y) + 0.5f) / float(pc.height);
 
   ray_t ray = ray_t::create(float2(u, v), pc.camera->inv_projection, pc.camera->inv_view);
 
