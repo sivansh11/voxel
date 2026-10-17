@@ -1,7 +1,10 @@
 #include "app.hpp"
 
+#include <algorithm>
+#include <cstring>
 #include <stdexcept>
 
+#include "horizon/gfx/base.hpp"
 #include "imgui.h"
 
 #include <GLFW/glfw3.h>
@@ -38,32 +41,54 @@ app_t::app_t(int argc, char **argv) {
   imgui_ds                = base->allocate_descriptor_set(
       {.handle_descriptor_set_layout = imgui_dsl});
 
+  bindless_image = base->new_bindless_storage_image();
+
   create_image(1, 1);
+  create_pipeline();
+
+  {
+    gfx::config_buffer_t cb{};
+    cb.vk_size               = sizeof(core::camera_t);
+    cb.vk_buffer_usage_flags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+    cb.vma_allocation_create_flags =
+        VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+    cb.debug_name = "camera";
+    camera_buffer =
+        base->create_buffer(gfx::resource_update_policy_t::e_every_frame, cb);
+  }
 
   auto voxels = voxelize(base, argv[1], std::stoi(argv[2]));
   world       = world_t{voxels};
+
+  upload_tree();
 }
 
 app_t::~app_t() {
   base->wait_idle();
+  destroy_pipeline();
+  destroy_tree();
+  base->destroy_buffer(camera_buffer);
   gfx::helper::imgui_shutdown();
 }
 
-inline math::vec3 sky_color(const math::vec3 &direction) {
-  const float      t = math::clamp(direction.y * 0.5f + 0.5f, 0.f, 1.f);
-  const math::vec3 sky_top{0.25f, 0.45f, 0.85f};
-  const math::vec3 sky_bottom{0.65f, 0.7f, 0.78f};
-  return math::mix(sky_bottom, sky_top, t);
-}
+struct tree64_gpu_t {
+  VkDeviceAddress nodes;
+  VkDeviceAddress indices;
 
-inline uint32_t to_pixel(const math::vec3 &color) {
-  const auto to_u8 = [](float v) {
-    return uint32_t(math::clamp(v, 0.f, 1.f) * 255.f);
-  };
-  return 0xff000000u | (to_u8(color.x) << 0) |  //
-         (to_u8(color.y) << 8) |                //
-         (to_u8(color.z) << 16);
-}
+  uint32_t num_levels;
+  uint32_t extent;
+};
+
+struct trace_push_constant_t {
+  VkDeviceAddress camera;
+  VkDeviceAddress tree64;
+
+  uint32_t width;
+  uint32_t height;
+  uint32_t bindless_image;
+};
+static_assert(sizeof(trace_push_constant_t) <= 128,
+              "sizeof(trace_push_constant_t) not <= 128");
 
 struct ui_context_t {
   VkDescriptorSet vk_ds;
@@ -195,67 +220,58 @@ void app_t::run() {
 
     core::timer::duration_t dt = frame_timer.update();
 
+    if (tree_dirty) {
+      base->wait_idle();
+      upload_tree();
+    }
+
     base->begin();
 
-    static float draw_duration = 0;
-    {
-      core::timer::scope_timer_t _{
-          [](auto duration) { draw_duration = duration.count(); }};
-      auto *pixels = reinterpret_cast<uint32_t *>(base->map_buffer(buffer));
-      auto [width, height] = image_dims();
-      float inv_width      = 1.f / width;
-      float inv_height     = 1.f / height;
-
-      jobs.clear();
-      jobs.reserve(height);
-
-      for (uint32_t y = 0; y < height; ++y) {
-        jobs.emplace_back(thread_pool.enqueue([&, y] {
-          const uint32_t row = y * width;
-          for (uint32_t x = 0; x < width; ++x) {
-            const math::vec2 uv = {(float(x) + 0.5f) * inv_width,
-                                   (float(y) + 0.5f) * inv_height};
-            const ray_t      ray =
-                ray_t::create(uv, camera_controller.inv_projection,
-                              camera_controller.inv_view);
-            hit_t hit = trace(ray, world.tree);
-            if (hit.did_hit) {
-              pixels[row + x] = hit.value;
-            } else {
-              pixels[row + x] = to_pixel(sky_color(ray.direction));
-            }
-          }
-        }));
-      }
-      for (auto &f : jobs) f.get();
-    }
+    std::memcpy(base->map_buffer(camera_buffer),  //
+                static_cast<core::camera_t *>(&camera_controller),
+                sizeof(core::camera_t));
 
     auto [width, height] = image_dims();
 
     gfx::rendergraph_t rg{};
     rg.add_pass([&](gfx::handle_commandbuffer_t) {})
-        .add_write_buffer(base->buffer(buffer), VK_ACCESS_HOST_WRITE_BIT,
+        .add_write_buffer(base->buffer(camera_buffer), VK_ACCESS_HOST_WRITE_BIT,
+                          VK_PIPELINE_STAGE_HOST_BIT)
+        .add_write_buffer(nodes_buffer, VK_ACCESS_HOST_WRITE_BIT,
+                          VK_PIPELINE_STAGE_HOST_BIT)
+        .add_write_buffer(indices_buffer, VK_ACCESS_HOST_WRITE_BIT,
+                          VK_PIPELINE_STAGE_HOST_BIT)
+        .add_write_buffer(tree64_buffer, VK_ACCESS_HOST_WRITE_BIT,
                           VK_PIPELINE_STAGE_HOST_BIT);
     rg.add_pass([&](gfx::handle_commandbuffer_t cmd) {
-        VkBufferImageCopy copy{};
-        copy.bufferOffset                    = 0;
-        copy.bufferRowLength                 = 0;
-        copy.bufferImageHeight               = 0;
-        copy.imageSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-        copy.imageSubresource.mipLevel       = 0;
-        copy.imageSubresource.baseArrayLayer = 0;
-        copy.imageSubresource.layerCount     = 1;
-        copy.imageOffset                     = {0, 0, 0};
-        copy.imageExtent                     = {width, height, 1};
-        base->cmd_copy_buffer_to_image(cmd, base->buffer(buffer), image,
-                                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                                       copy);
+        base->cmd_begin_timer(cmd, base->timer(trace_timer));
+        base->cmd_bind_pipeline(cmd, trace_pipeline);
+        base->cmd_bind_descriptor_sets(cmd, trace_pipeline, 0,
+                                       {base->_bindless_descriptor_set});
+
+        trace_push_constant_t pc{};
+        pc.camera         = base->get_buffer_device_address(camera_buffer);
+        pc.tree64         = base->get_buffer_device_address(tree64_buffer);
+        pc.width          = width;
+        pc.height         = height;
+        pc.bindless_image = bindless_image.val;
+
+        base->cmd_push_constants(cmd, trace_pipeline, VK_SHADER_STAGE_ALL, 0,
+                                 sizeof(pc), &pc);
+        base->cmd_dispatch(cmd, (width + 7) / 8, (height + 7) / 8, 1);
+        base->cmd_end_timer(cmd, base->timer(trace_timer));
       })
-        .add_read_buffer(base->buffer(buffer), VK_ACCESS_TRANSFER_READ_BIT,
-                         VK_PIPELINE_STAGE_TRANSFER_BIT)
-        .add_write_image(image, VK_ACCESS_TRANSFER_WRITE_BIT,
-                         VK_PIPELINE_STAGE_TRANSFER_BIT,
-                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        .add_read_buffer(base->buffer(camera_buffer), VK_ACCESS_SHADER_READ_BIT,
+                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT)
+        .add_read_buffer(nodes_buffer, VK_ACCESS_SHADER_READ_BIT,
+                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT)
+        .add_read_buffer(indices_buffer, VK_ACCESS_SHADER_READ_BIT,
+                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT)
+        .add_read_buffer(tree64_buffer, VK_ACCESS_SHADER_READ_BIT,
+                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT)
+        .add_write_image(image, VK_ACCESS_SHADER_WRITE_BIT,
+                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                         VK_IMAGE_LAYOUT_GENERAL);
     rg.add_pass([&](gfx::handle_commandbuffer_t cmd) {
         base->begin_swapchain_renderpass();
         gfx::helper::imgui_newframe();
@@ -346,6 +362,7 @@ void app_t::run() {
           hit_t       hit = trace(ray, world.tree);
           if (hit.did_hit) {
             world.tree.remove(hit.position);
+            tree_dirty = true;
           }
         }
 
@@ -363,6 +380,7 @@ void app_t::run() {
           hit_t       hit = trace(ray, world.tree);
           if (hit.did_hit) {
             world.tree.set(hit.position + hit.normal, 0xff0000ffu);
+            tree_dirty = true;
           }
         }
 
@@ -371,7 +389,11 @@ void app_t::run() {
 
         // debug
         ImGui::Begin("debug");
-        ImGui::Text("draw took %fms", draw_duration);
+        if (auto t = base->_context->timer_get_time(base->timer(trace_timer))) {
+          ImGui::Text("draw took %fms", *t);
+        } else {
+          ImGui::Text("unable to get draw timings");
+        }
         ImGui::Text("%f framerate", ImGui::GetIO().Framerate);
         ImGui::Text("current dims: %u, %u", ui_ctx.viewport_width,
                     ui_ctx.viewport_height);
@@ -418,14 +440,14 @@ void app_t::create_image(uint32_t width, uint32_t height) {
   ci.vk_type    = VK_IMAGE_TYPE_2D;
   ci.vk_format  = VK_FORMAT_R8G8B8A8_UNORM;
   ci.vk_usage   = VK_IMAGE_USAGE_SAMPLED_BIT |  //
-                  VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+                  VK_IMAGE_USAGE_STORAGE_BIT;
   ci.vk_tiling  = VK_IMAGE_TILING_OPTIMAL;
   ci.debug_name = "image";
   image         = base->create_image(ci);
   image_view    = base->create_image_view(
       {.handle_image = image, .debug_name = "image_view"});
 
-  create_buffer(width, height);
+  base->set_bindless_storage_image(bindless_image, image_view);
 
   base->update_descriptor_set(imgui_ds)
       .push_image_write(
@@ -435,18 +457,6 @@ void app_t::create_image(uint32_t width, uint32_t height) {
       .commit();
 }
 
-void app_t::create_buffer(uint32_t width, uint32_t height) {
-  gfx::config_buffer_t cb{};
-  cb.vk_size                     = VkDeviceSize(width) * height * 4;
-  cb.vk_buffer_usage_flags       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-  cb.vma_allocation_create_flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
-  cb.debug_name                  = "pixels";
-  buffer =
-      base->create_buffer(gfx::resource_update_policy_t::e_every_frame, cb);
-}
-
-void app_t::destroy_buffer() { base->destroy_buffer(buffer); }
-
 std::pair<uint32_t, uint32_t> app_t::image_dims() {
   const auto &cfg = ctx->get_image(image).config;
   return {cfg.vk_width, cfg.vk_height};
@@ -455,5 +465,76 @@ std::pair<uint32_t, uint32_t> app_t::image_dims() {
 void app_t::destroy_image() {
   base->destroy_image_view(image_view);
   base->destroy_image(image);
-  destroy_buffer();
+}
+
+void app_t::create_pipeline() {
+  trace_shader = gfx::helper::create_slang_shader(
+      *base, "./src/shaders/trace.slang", gfx::shader_type_t::e_compute);
+
+  gfx::config_pipeline_layout_t cpl{};
+  cpl.add_descriptor_set_layout(base->_bindless_descriptor_set_layout);
+  cpl.add_push_constant(sizeof(trace_push_constant_t), VK_SHADER_STAGE_ALL);
+  trace_pl = base->create_pipeline_layout(cpl);
+
+  gfx::config_pipeline_t cp{};
+  cp.handle_pipeline_layout = trace_pl;
+  cp.add_shader(trace_shader);
+  trace_pipeline = base->create_compute_pipeline(cp);
+  trace_timer =
+      base->create_timer(gfx::resource_update_policy_t::e_every_frame, {});
+}
+
+void app_t::destroy_pipeline() {
+  base->destroy_pipeline(trace_pipeline);
+  base->destroy_pipeline_layout(trace_pl);
+  base->destroy_shader(trace_shader);
+}
+
+void app_t::upload_tree() {
+  destroy_tree();
+
+  gfx::config_buffer_t cb{};
+  cb.vk_buffer_usage_flags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+  cb.vma_allocation_create_flags =
+      VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+  cb.debug_name = "nodes";
+  cb.vk_size    = world.tree.nodes.size() * sizeof(world.tree.nodes[0]);
+  nodes_buffer  = base->create_buffer(cb);
+  std::memcpy(base->map_buffer(nodes_buffer), world.tree.nodes.data(),
+              cb.vk_size);
+
+  cb.debug_name  = "indices";
+  cb.vk_size     = world.tree.indices.size() * sizeof(world.tree.indices[0]);
+  indices_buffer = base->create_buffer(cb);
+  std::memcpy(base->map_buffer(indices_buffer), world.tree.indices.data(),
+              cb.vk_size);
+
+  tree64_gpu_t tree64_gpu{};
+  tree64_gpu.nodes      = base->get_buffer_device_address(nodes_buffer);
+  tree64_gpu.indices    = base->get_buffer_device_address(indices_buffer);
+  tree64_gpu.num_levels = tree64_t::num_levels;
+  tree64_gpu.extent     = tree64_t::extent;
+
+  cb.debug_name = "tree64";
+  cb.vk_size    = sizeof(tree64_gpu_t);
+  tree64_buffer = base->create_buffer(cb);
+  std::memcpy(base->map_buffer(tree64_buffer), &tree64_gpu,
+              sizeof(tree64_gpu_t));
+
+  tree_dirty = false;
+}
+
+void app_t::destroy_tree() {
+  if (nodes_buffer != core::null_handle) {
+    base->destroy_buffer(nodes_buffer);
+    nodes_buffer = core::null_handle;
+  }
+  if (indices_buffer != core::null_handle) {
+    base->destroy_buffer(indices_buffer);
+    indices_buffer = core::null_handle;
+  }
+  if (tree64_buffer != core::null_handle) {
+    base->destroy_buffer(tree64_buffer);
+    tree64_buffer = core::null_handle;
+  }
 }
